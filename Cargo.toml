@@ -26,6 +26,7 @@ rsa = { version = "0.9", features = ["sha2"] }
 sha2 = "0.10"
 base64 = "0.22"
 pem = "3"
+percent-encoding = "2"
 rand_core = "0.6"
 log = "0.4"
 env_logger = "0.11"

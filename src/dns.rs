@@ -1,10 +1,32 @@
 use crate::auth::TokenProvider;
 use crate::config::{Config, IpSource, Record};
 use miniserde::Deserialize;
+use percent_encoding::{AsciiSet, CONTROLS};
 use std::net::IpAddr;
 
 const V4_ENDPOINT: &str = "https://ipv4.icanhazip.com";
 const V6_ENDPOINT: &str = "https://ipv6.icanhazip.com";
+
+/// Characters that must be percent-encoded in a URI path segment.
+/// Mirrors RFC 3986: keep only unreserved chars (A-Za-z0-9-._~) plus
+/// sub-delims that are safe in a path. The `*` in wildcard record names
+/// (e.g. `*.example.com.`) MUST be encoded as `%2A` — GCP rejects the
+/// literal `*` in the path with "Invalid value for 'entity.rrset.name'".
+const PATH_ENCODE_SET: &AsciiSet = &CONTROLS
+    .add(b' ')
+    .add(b'"')
+    .add(b'#')
+    .add(b'<')
+    .add(b'>')
+    .add(b'?')
+    .add(b'`')
+    .add(b'{')
+    .add(b'}')
+    .add(b'*');
+
+fn encode_path_segment(s: &str) -> String {
+    percent_encoding::utf8_percent_encode(s, PATH_ENCODE_SET).to_string()
+}
 
 pub fn v4_endpoint() -> &'static str {
     V4_ENDPOINT
@@ -21,6 +43,7 @@ struct RrsetResp {
 }
 
 fn base_url(project: &str, zone: &str, name: &str, rtype: &str) -> String {
+    let name = encode_path_segment(name);
     format!(
         "https://dns.googleapis.com/dns/v1/projects/{project}/managedZones/{zone}/rrsets/{name}/{rtype}"
     )

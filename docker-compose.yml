@@ -1,0 +1,8 @@
+services:
+  ddns:
+    image: ghcr.io/eason0729/google-ddns:latest
+    environment:
+      - "CONFIG_FILE=/config/config.json"
+    volumes:
+      - ./config.json:/config/config.json:ro
+      - ./service-account.json:/config/service-account.json:ro

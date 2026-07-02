@@ -334,6 +334,7 @@ dependencies = [
  "log",
  "miniserde",
  "pem",
+ "percent-encoding",
  "rand_core",
  "rsa",
  "sha2",
