@@ -42,6 +42,20 @@ fn rrset_body(name: &str, rtype: &str, ttl: i64, rrdata: &[String]) -> String {
     )
 }
 
+/// Read a response body, returning an error that includes GCP's message on failure.
+fn read_body(
+    resp: ureq::http::Response<ureq::Body>,
+    op: &str,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let status = resp.status().as_u16();
+    let body = resp.into_body().read_to_string()?;
+    if (200..300).contains(&status) {
+        Ok(body)
+    } else {
+        Err(format!("{op} failed: http {status}: {body}").into())
+    }
+}
+
 pub fn update_record(
     agent: &ureq::Agent,
     token: &TokenProvider,
@@ -57,59 +71,54 @@ pub fn update_record(
     let ttl = rec.ttl();
 
     let get_url = base_url(project, zone, &rec.name, rtype);
-    let get_resp = agent
+    let resp = agent
         .get(&get_url)
         .header("Authorization", format!("Bearer {access}"))
-        .call();
+        .call()?;
 
-    match get_resp {
-        Ok(mut r) => {
-            let body = r.body_mut().read_to_string()?;
-            let existing: RrsetResp = miniserde::json::from_str(&body)
-                .map_err(|e| format!("parse GET rrset: {e}: {body}"))?;
-
-            let cur = existing.rrdata.unwrap_or_default();
-            let cur_ttl = existing.ttl.unwrap_or(0);
-            if cur.len() == 1 && cur[0] == rrdata[0] && cur_ttl == ttl {
-                log::info!("{} {} up to date ({})", rec.name, rtype, rrdata[0]);
-                return Ok(());
-            }
-
-            log::info!(
-                "{} {} updating -> {} (ttl {})",
-                rec.name,
-                rtype,
-                rrdata[0],
-                ttl
-            );
-            let body = rrset_body(&rec.name, rtype, ttl, &rrdata);
-            agent
-                .patch(&get_url)
-                .header("Authorization", format!("Bearer {access}"))
-                .header("Content-Type", "application/json")
-                .send(body)?
-                .body_mut()
-                .read_to_string()?;
-        }
-        Err(ureq::Error::StatusCode(404)) => {
-            log::info!(
-                "{} {} creating -> {} (ttl {})",
-                rec.name,
-                rtype,
-                rrdata[0],
-                ttl
-            );
-            let body = rrset_body(&rec.name, rtype, ttl, &rrdata);
-            agent
-                .post(create_url(project, zone))
-                .header("Authorization", format!("Bearer {access}"))
-                .header("Content-Type", "application/json")
-                .send(body)?
-                .body_mut()
-                .read_to_string()?;
-        }
-        Err(e) => return Err(format!("GET rrset failed: {e}").into()),
+    if resp.status().as_u16() == 404 {
+        log::info!(
+            "{} {} creating -> {} (ttl {})",
+            rec.name,
+            rtype,
+            rrdata[0],
+            ttl
+        );
+        let body = rrset_body(&rec.name, rtype, ttl, &rrdata);
+        let resp = agent
+            .post(create_url(project, zone))
+            .header("Authorization", format!("Bearer {access}"))
+            .header("Content-Type", "application/json")
+            .send(body)?;
+        read_body(resp, "POST")?;
+        return Ok(());
     }
+
+    let body = read_body(resp, "GET")?;
+    let existing: RrsetResp =
+        miniserde::json::from_str(&body).map_err(|e| format!("parse GET rrset: {e}: {body}"))?;
+
+    let cur = existing.rrdata.unwrap_or_default();
+    let cur_ttl = existing.ttl.unwrap_or(0);
+    if cur.len() == 1 && cur[0] == rrdata[0] && cur_ttl == ttl {
+        log::info!("{} {} up to date ({})", rec.name, rtype, rrdata[0]);
+        return Ok(());
+    }
+
+    log::info!(
+        "{} {} updating -> {} (ttl {})",
+        rec.name,
+        rtype,
+        rrdata[0],
+        ttl
+    );
+    let body = rrset_body(&rec.name, rtype, ttl, &rrdata);
+    let resp = agent
+        .patch(&get_url)
+        .header("Authorization", format!("Bearer {access}"))
+        .header("Content-Type", "application/json")
+        .send(body)?;
+    read_body(resp, "PATCH")?;
     Ok(())
 }
 

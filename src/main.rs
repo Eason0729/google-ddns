@@ -38,6 +38,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let agent: Agent = Agent::config_builder()
         .timeout_global(Some(Duration::from_secs(30)))
+        .http_status_as_error(false)
         .tls_config(
             TlsConfig::builder()
                 .provider(TlsProvider::NativeTls)
