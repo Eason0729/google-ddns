@@ -1,0 +1,9 @@
+{
+  "credentials_file": "/config/service-account.json",
+  "managed_zone": "my-zone",
+  "interval_secs": 300,
+  "records": [
+    { "name": "ddns.example.com.", "ttl": 300, "ip_source": "v4" },
+    { "name": "*.example.com.",    "ttl": 300, "ip_source": "v6" }
+  ]
+}
